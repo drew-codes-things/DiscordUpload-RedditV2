@@ -1,20 +1,54 @@
-# File uploader/subreddit media sender to Discord webhook 
-This script sets up a backend service that launches a website. The website allows users to upload files to Discord using a webhook. Also, it automates the process of sending posts from specified subreddits to the Discord webhook. The users simply need to enter the name of the subreddit.
+# DiscordUpload-Reddit
 
-## Requirements 
-- pip installations in the requirements.txt
-- Python 3.8.x+ (use ``python --version`` to check)
+A local web app to send Reddit posts and local files directly to a Discord channel via webhook.
 
-## How to use 
-1. Open your command line
-2. Use ``cd ...the directory folder...``
-3. Run ``pip install -r requirements.txt``
-4. Once complete, fill in your .env using [this](https://www.reddit.com/prefs/apps)
-5. Choose the script use as an option and return to stage 4 until .env is fullfilled
-6. Use ``python backend.py`` to start the backend
-7. In the terminal it will give you two websites to visit and you will use that (the frontend)
+**Version 2 requires no Reddit API credentials.** It uses Reddit's public JSON API (`reddit.com/r/{sub}/hot.json`) so you can run it immediately with zero setup.
 
-## Issues
-Contact me via <a href="mailto:support@starlover.online">support@starlover.online</a> in a case of any issues with an image and explanation
+---
 
-**Note:** For Reddit usage, the script sends titles and descriptions if no picture or GIF media is available. It includes buttons to view posts. Currently, there is no support for videos from Reddit. All types of uploads are supported.
+## Requirements
+
+- Python 3.8+
+- Dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## Usage
+
+```bash
+python backend.py
+```
+
+Then open [http://localhost:1432](http://localhost:1432) in your browser.
+
+From the web UI you can:
+- **Upload local files** (images, videos) directly to a Discord webhook
+- **Fetch Reddit posts** from any public subreddit and send them as Discord embeds
+
+---
+
+## What gets sent to Discord
+
+| Post type | Embed content |
+|-----------|---------------|
+| Image post | Embed with inline image |
+| Reddit-hosted video | Embed with video URL |
+| Text/link post | Embed with title, permalink, and post body |
+
+Already-sent posts are tracked in `sent_posts.json` and skipped for 7 days to avoid duplicates.
+
+---
+
+## Why no credentials?
+
+Reddit's `.json` API is publicly accessible — it's the same data your browser loads when you add `.json` to any Reddit URL. No OAuth, no client ID, no secret needed.
+
+---
+
+## License
+
+MIT

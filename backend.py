@@ -221,7 +221,6 @@ def fetch_reddit():
         failed_items = []
 
         all_posts = fetch_reddit_posts_json(subreddit_name, num_items + 50)
-        # Filter stickied and already-sent, then take what we need
         posts = [p for p in all_posts if not p.get('stickied') and p.get('id') not in sent_posts]
         posts = posts[:num_items]
 

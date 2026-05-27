@@ -1,4 +1,4 @@
-# DiscordUpload-Reddit
+# DiscordUpload-Reddit V2
 
 A local web app to send Reddit posts and local files directly to a Discord channel via webhook.
 

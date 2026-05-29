@@ -1,54 +1,37 @@
-# DiscordUpload-Reddit V2
+# DiscordUpload-RedditV2
 
-A local web app to send Reddit posts and local files directly to a Discord channel via webhook.
+A hybrid tool that combines Discord webhooks with a Flask backend to upload files to Discord, while also allowing Reddit media fetching from subreddits.
 
-**Version 2 requires no Reddit API credentials.** It uses Reddit's public JSON API (`reddit.com/r/{sub}/hot.json`) so you can run it immediately with zero setup.
+## Features
 
----
+- Upload files directly to Discord via webhooks
+- Fetch and download media from Reddit subreddits
+- Flask web server for easy interaction
+- Supports images, videos, and other file types
+
+## Installation
+
+```bash
+git clone https://github.com/drew-codes-things/DiscordUpload-RedditV2.git
+cd DiscordUpload-RedditV2
+pip install -r requirements.txt
+```
+
+## Usage
+
+Run the Flask server:
+```bash
+python app.py
+```
+
+Then use the web interface or API endpoints to upload or download media.
 
 ## Requirements
 
 - Python 3.8+
-- Dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## Usage
-
-```bash
-python backend.py
-```
-
-Then open [http://localhost:1432](http://localhost:1432) in your browser.
-
-From the web UI you can:
-- **Upload local files** (images, videos) directly to a Discord webhook
-- **Fetch Reddit posts** from any public subreddit and send them as Discord embeds
-
----
-
-## What gets sent to Discord
-
-| Post type | Embed content |
-|-----------|---------------|
-| Image post | Embed with inline image |
-| Reddit-hosted video | Embed with video URL |
-| Text/link post | Embed with title, permalink, and post body |
-
-Already-sent posts are tracked in `sent_posts.json` and skipped for 7 days to avoid duplicates.
-
----
-
-## Why no credentials?
-
-Reddit's `.json` API is publicly accessible — it's the same data your browser loads when you add `.json` to any Reddit URL. No OAuth, no client ID, no secret needed.
-
----
+- Discord webhook URL(s)
+- Reddit API credentials (optional, for Reddit features)
 
 ## License
 
-MIT
+MIT License

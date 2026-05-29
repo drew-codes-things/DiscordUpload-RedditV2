@@ -1,4 +1,4 @@
-import os, io, time, sys, json, logging, requests
+import os, io, time, sys, json, shutil, logging, requests
 from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import secure_filename
 from requests.exceptions import RequestException
@@ -12,6 +12,10 @@ load_dotenv()
 REDDIT_HEADERS  = {'User-Agent': 'DiscordUpload-Reddit/2.0 by Drew'}
 MAX_REDDIT_ITEMS = 200
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB -- Discord webhook hard limit
+
+# Minimum delay between consecutive Discord webhook POSTs to stay well under
+# the ~30 requests/30s rate limit. 0.5s gives a headroom of ~20 req/10s.
+WEBHOOK_POST_DELAY = 0.5
 
 
 class CustomFormatter(logging.Formatter):
@@ -52,6 +56,7 @@ app.config['SECRET_KEY'] = _secret
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'webm', 'avi', 'mov', 'mkv'}
 SENT_POSTS_FILE = './sent_posts.json'
+SENT_POSTS_BACKUP = './sent_posts.json.bak'
 
 limiter = Limiter(
     get_remote_address,
@@ -147,15 +152,34 @@ def extract_gallery_images(post):
 
 
 def load_sent_posts():
-    try:
-        if os.path.exists(SENT_POSTS_FILE):
-            with open(SENT_POSTS_FILE, 'r') as f:
-                data = json.load(f)
-                cutoff = datetime.now() - timedelta(days=7)
-                return {k: v for k, v in data.items()
-                        if datetime.fromisoformat(v) > cutoff}
+    """
+    Load the sent-posts deduplication dict from disk.
+
+    If the JSON file is corrupted (empty file, partial write, etc.) a warning
+    is logged, the corrupted file is backed up to sent_posts.json.bak so it
+    can be inspected, and an empty dict is returned. This prevents all
+    previously-seen posts being re-sent to Discord after a bad write.
+    """
+    if not os.path.exists(SENT_POSTS_FILE):
         return {}
-    except (json.JSONDecodeError, IOError) as e:
+    try:
+        with open(SENT_POSTS_FILE, 'r') as f:
+            data = json.load(f)
+        cutoff = datetime.now() - timedelta(days=7)
+        return {k: v for k, v in data.items()
+                if datetime.fromisoformat(v) > cutoff}
+    except json.JSONDecodeError as e:
+        logger.warning(
+            f"sent_posts.json is corrupted ({e}). "
+            f"Backing up to {SENT_POSTS_BACKUP} and starting fresh -- "
+            "posts from the last 7 days may be re-sent once."
+        )
+        try:
+            shutil.copy2(SENT_POSTS_FILE, SENT_POSTS_BACKUP)
+        except OSError as backup_err:
+            logger.warning(f"Could not create backup: {backup_err}")
+        return {}
+    except (IOError, ValueError) as e:
         logger.error(f"Error loading sent posts: {e}")
         return {}
 
@@ -290,6 +314,9 @@ def fetch_reddit():
                 if response.status_code == 204:
                     sent_posts[post['id']] = datetime.now().isoformat()
                     sent_count += 1
+                    # Throttle to avoid hitting Discord's webhook rate limit
+                    # (~30 requests per 30s per webhook URL).
+                    time.sleep(WEBHOOK_POST_DELAY)
                 else:
                     failed_items.append(post.get('title', post['id']))
             except RequestException:

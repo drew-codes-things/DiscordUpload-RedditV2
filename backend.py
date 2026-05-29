@@ -1,4 +1,4 @@
-import os, time, threading, sys, json, logging, requests
+import os, io, time, sys, json, logging, requests
 from flask import Flask, render_template, request, jsonify
 from werkzeug.utils import secure_filename
 from requests.exceptions import RequestException
@@ -10,6 +10,7 @@ from flask_limiter.util import get_remote_address
 load_dotenv()
 
 REDDIT_HEADERS = {'User-Agent': 'DiscordUpload-Reddit/2.0 by Drew'}
+MAX_REDDIT_ITEMS = 200
 
 
 class CustomFormatter(logging.Formatter):
@@ -38,11 +39,9 @@ def setup_logging():
 
 
 app = Flask(__name__, template_folder='website')
-app.config['SECRET_KEY'] = os.urandom(24)
+app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', os.urandom(24))
 
-UPLOAD_FOLDER = './uploads'
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'webm', 'avi', 'mov', 'mkv'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 SENT_POSTS_FILE = './sent_posts.json'
 
 limiter = Limiter(
@@ -50,12 +49,6 @@ limiter = Limiter(
     app=app,
     default_limits=["100 per minute"]
 )
-
-try:
-    os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-except OSError as e:
-    print(f"Failed to create upload directory: {e}")
-    raise
 
 
 def allowed_file(filename):
@@ -68,27 +61,8 @@ def validate_webhook_url(url):
     return url.startswith('https://discord.com/api/webhooks/')
 
 
-def cleanup_old_uploads():
-    try:
-        now = time.time()
-        for filename in os.listdir(UPLOAD_FOLDER):
-            file_path = os.path.join(UPLOAD_FOLDER, filename)
-            if os.path.isfile(file_path) and now - os.path.getctime(file_path) > 86400:
-                os.unlink(file_path)
-    except Exception as e:
-        print(f"Error during upload cleanup: {e}")
-
-
-def start_cleanup_job():
-    def run_cleanup():
-        while True:
-            cleanup_old_uploads()
-            time.sleep(86400)
-    threading.Thread(target=run_cleanup, daemon=True).start()
-
-
 def fetch_reddit_posts_json(subreddit_name, limit):
-    """Fetch posts from Reddit's public JSON API — no credentials needed."""
+    """Fetch posts from Reddit's public JSON API -- no credentials needed."""
     posts = []
     after = None
 
@@ -182,10 +156,8 @@ def upload_file():
             continue
         safe_filename = secure_filename(file.filename)
         try:
-            file_path = os.path.join(app.config['UPLOAD_FOLDER'], safe_filename)
-            file.save(file_path)
-            with open(file_path, 'rb') as f:
-                response = requests.post(webhook_url, files={'file': (safe_filename, f)})
+            file_bytes = io.BytesIO(file.read())
+            response = requests.post(webhook_url, files={'file': (safe_filename, file_bytes)})
             if response.status_code in [200, 204]:
                 uploaded_files += 1
             else:
@@ -208,12 +180,21 @@ def upload_file():
 def fetch_reddit():
     webhook_url = request.form['webhook_url']
     subreddit_name = request.form['subreddit_name']
-    num_items = int(request.form['num_items'])
+
+    try:
+        num_items = int(request.form['num_items'])
+    except (ValueError, TypeError):
+        return jsonify({"status": "error", "message": "num_items must be an integer"}), 400
 
     if not subreddit_name:
         return jsonify({"status": "error", "message": "Subreddit name is required"}), 400
     if num_items <= 0:
         return jsonify({"status": "error", "message": "Number of posts must be greater than 0"}), 400
+    if num_items > MAX_REDDIT_ITEMS:
+        return jsonify({
+            "status": "error",
+            "message": f"num_items cannot exceed {MAX_REDDIT_ITEMS}. Requested: {num_items}"
+        }), 400
 
     try:
         sent_posts = load_sent_posts()
@@ -271,7 +252,6 @@ if __name__ == '__main__':
     logger.info("NOTE: Coded by Drew")
     logger.info("Ready")
     logger.info("WEBSITE: http://localhost:1432 or http://127.0.0.1:1432")
-    start_cleanup_job()
     try:
         app.run(host='0.0.0.0', port=1432, debug=False)
     except Exception as e:

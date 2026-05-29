@@ -2,39 +2,49 @@
 
 Hybrid tool combining Discord webhooks + Flask backend for file uploads to Discord, with optional Reddit media fetching.
 
-## Technical Architecture
-
-- **Backend**: Flask (Python)
-- **Frontend**: Simple web interface
-- **Discord Integration**: Webhook uploads (images, videos, files)
-- **Reddit Integration**: Fetch media from subreddits (optional)
-
 ## File Structure
 
 ```
 DiscordUpload-RedditV2/
-├── app.py                 # Flask server
+├── app.py
 ├── requirements.txt
 ├── README.md
 └── LICENSE
 ```
 
-## Installation
+## Installation (Recommended: Virtual Environment)
+
+### On Linux / macOS
 
 ```bash
 git clone https://github.com/drew-codes-things/DiscordUpload-RedditV2.git
+cd DiscordUpload-RedditV2
+
+python3 -m venv venv
+source venv/bin/activate
+
 pip install -r requirements.txt
-python app.py
+```
+
+### On Windows
+
+```bash
+git clone https://github.com/drew-codes-things/DiscordUpload-RedditV2.git
+cd DiscordUpload-RedditV2
+
+python -m venv venv
+venv\Scripts\activate
+
+pip install -r requirements.txt
 ```
 
 ## Usage
 
-Run the Flask server and use the web UI or API to upload files or download Reddit media.
+Run the Flask server and use the web UI.
 
 ## Requirements
 
 - Python 3.8+
-- Discord webhook URL(s)
 
 ## License
 

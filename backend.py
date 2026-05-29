@@ -9,8 +9,9 @@ from flask_limiter.util import get_remote_address
 
 load_dotenv()
 
-REDDIT_HEADERS = {'User-Agent': 'DiscordUpload-Reddit/2.0 by Drew'}
+REDDIT_HEADERS  = {'User-Agent': 'DiscordUpload-Reddit/2.0 by Drew'}
 MAX_REDDIT_ITEMS = 200
+MAX_UPLOAD_BYTES = 25 * 1024 * 1024  # 25 MB -- Discord webhook hard limit
 
 
 class CustomFormatter(logging.Formatter):
@@ -39,7 +40,15 @@ def setup_logging():
 
 
 app = Flask(__name__, template_folder='website')
-app.config['SECRET_KEY'] = os.getenv('FLASK_SECRET_KEY', os.urandom(24))
+
+_secret = os.getenv('FLASK_SECRET_KEY')
+if not _secret:
+    raise RuntimeError(
+        "FLASK_SECRET_KEY is not set in .env. "
+        "Generate one with: python -c \"import secrets; print(secrets.token_hex(32))\" "
+        "and add it to your .env file."
+    )
+app.config['SECRET_KEY'] = _secret
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'mp4', 'webm', 'avi', 'mov', 'mkv'}
 SENT_POSTS_FILE = './sent_posts.json'
@@ -107,6 +116,36 @@ def extract_video_url(post):
     return None
 
 
+def extract_gallery_images(post):
+    """
+    For gallery posts (is_gallery=True), return a list of the best-quality
+    image URLs from media_metadata, preserving the gallery order.
+    Returns an empty list if the post is not a gallery or has no metadata.
+    """
+    if not post.get('is_gallery'):
+        return []
+    media_metadata = post.get('media_metadata') or {}
+    items_order = []
+    gallery_data = post.get('gallery_data') or {}
+    for item in gallery_data.get('items', []):
+        media_id = item.get('media_id')
+        if media_id and media_id in media_metadata:
+            meta = media_metadata[media_id]
+            status = meta.get('status')
+            if status != 'valid':
+                continue
+            # prefer 'p' (preview sizes) descending, fall back to 's' (source)
+            previews = meta.get('p', [])
+            if previews:
+                best = previews[-1].get('u', '')
+            else:
+                best = (meta.get('s') or {}).get('u', '')
+            if best:
+                # Reddit preview URLs use HTML entities
+                items_order.append(best.replace('&amp;', '&'))
+    return items_order
+
+
 def load_sent_posts():
     try:
         if os.path.exists(SENT_POSTS_FILE):
@@ -154,16 +193,28 @@ def upload_file():
         if not allowed_file(file.filename):
             failed_files.append(file.filename)
             continue
-        safe_filename = secure_filename(file.filename)
+
+        safe_name = secure_filename(file.filename)
+
+        # Read once so we can check size before uploading
+        file_bytes = file.read()
+        if len(file_bytes) > MAX_UPLOAD_BYTES:
+            failed_files.append(
+                f"{safe_name} (exceeds 25 MB limit: {len(file_bytes) // (1024*1024)} MB)"
+            )
+            continue
+
         try:
-            file_bytes = io.BytesIO(file.read())
-            response = requests.post(webhook_url, files={'file': (safe_filename, file_bytes)})
+            response = requests.post(
+                webhook_url,
+                files={'file': (safe_name, io.BytesIO(file_bytes))}
+            )
             if response.status_code in [200, 204]:
                 uploaded_files += 1
             else:
-                failed_files.append(safe_filename)
+                failed_files.append(safe_name)
         except (RequestException, Exception):
-            failed_files.append(safe_filename)
+            failed_files.append(safe_name)
 
     logger.info("RESULT: Successfully sent uploaded files")
     return jsonify({
@@ -206,8 +257,9 @@ def fetch_reddit():
         posts = posts[:num_items]
 
         for post in posts:
-            video_url = extract_video_url(post)
-            post_url = post.get('url', '')
+            video_url     = extract_video_url(post)
+            gallery_images = extract_gallery_images(post)
+            post_url      = post.get('url', '')
 
             embed = {
                 "title": post.get('title', ''),
@@ -217,6 +269,13 @@ def fetch_reddit():
 
             if video_url:
                 embed["video"] = {"url": video_url}
+            elif gallery_images:
+                # Use the first gallery image as the embed image;
+                # append remaining URLs to the description so nothing is lost.
+                embed["image"] = {"url": gallery_images[0]}
+                if len(gallery_images) > 1:
+                    extra = "\n".join(gallery_images[1:])
+                    embed["description"] += f"\n\n**Gallery ({len(gallery_images)} images):**\n{extra}"
             elif post_url.endswith(('.jpg', '.jpeg', '.png', '.gif')):
                 embed["image"] = {"url": post_url}
             else:

@@ -32,16 +32,19 @@ class CustomFormatter(logging.Formatter):
 
 
 def setup_logging():
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)
+    _logger = logging.getLogger()
+    _logger.setLevel(logging.INFO)
     console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(CustomFormatter())
-    logger.handlers.clear()
-    logger.addHandler(console_handler)
+    _logger.handlers.clear()
+    _logger.addHandler(console_handler)
     logging.getLogger('werkzeug').setLevel(logging.ERROR)
-    return logger
+    return _logger
 
+
+# Module-level logger so it is available whether run directly or via WSGI.
+logger = setup_logging()
 
 app = Flask(__name__, template_folder='website')
 
@@ -237,7 +240,7 @@ def upload_file():
                 uploaded_files += 1
             else:
                 failed_files.append(safe_name)
-        except (RequestException, Exception):
+        except Exception:
             failed_files.append(safe_name)
 
     logger.info("RESULT: Successfully sent uploaded files")
@@ -314,8 +317,6 @@ def fetch_reddit():
                 if response.status_code == 204:
                     sent_posts[post['id']] = datetime.now().isoformat()
                     sent_count += 1
-                    # Throttle to avoid hitting Discord's webhook rate limit
-                    # (~30 requests per 30s per webhook URL).
                     time.sleep(WEBHOOK_POST_DELAY)
                 else:
                     failed_items.append(post.get('title', post['id']))
@@ -334,7 +335,6 @@ def fetch_reddit():
 
 
 if __name__ == '__main__':
-    logger = setup_logging()
     logger.info("NOTE: Coded by Drew")
     logger.info("Ready")
     logger.info("WEBSITE: http://localhost:1432 or http://127.0.0.1:1432")
